@@ -1,0 +1,2 @@
+# CI only needs the database driver (the quiz/ package imports nothing else)
+psycopg[binary]>=3.2,<4

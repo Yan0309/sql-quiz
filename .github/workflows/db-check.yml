@@ -1,0 +1,56 @@
+name: Database setup & quiz check
+
+# Runs on every push to main, on demand (Actions tab → Run workflow),
+# and weekly. Every credential comes from GitHub Secrets — none is
+# written in this file or anywhere else in the repository.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "17 13 * * 1"   # Mondays 13:17 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: db-check
+  cancel-in-progress: false
+
+jobs:
+  setup-and-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      QUIZ_TAKER_PASSWORD: ${{ secrets.QUIZ_TAKER_PASSWORD }}
+      QUIZ_APP_PASSWORD: ${{ secrets.QUIZ_APP_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-ci.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-ci.txt
+
+      - name: Confirm secrets are present (values are never printed)
+        run: |
+          for name in DATABASE_URL QUIZ_TAKER_PASSWORD QUIZ_APP_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::GitHub secret $name is not set"; exit 1
+            fi
+            echo "$name is set"
+          done
+
+      - name: Load Olist data (first run only; existing tables are left untouched)
+        run: python scripts/load_olist.py
+
+      - name: Create roles, app schema, grants
+        run: python scripts/setup_db.py
+
+      - name: Verify hints, permissions and audit log
+        run: python scripts/check_quiz.py
