@@ -6,7 +6,7 @@ IDS 706 [SQL Practice Lab](https://sql-practice-lab-ids706.vercel.app/).
 Students sign in, pick a question, type SQL, run it, and see the real result table plus
 an instant check against the expected result.
 
-**Quiz site:** `https://YOUR-APP-NAME.streamlit.app`  ← *replace after deploying (step 5)*
+**Quiz site:** https://706sql-quiz.streamlit.app/
 
 | Requirement | Where it lives |
 |---|---|
