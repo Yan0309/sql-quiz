@@ -77,13 +77,31 @@ def preflight(cur) -> None:
 
 def ensure_role(cur, role: str, password: str) -> None:
     cur.execute("SELECT 1 FROM pg_roles WHERE rolname = %s", (role,))
-    verb = "ALTER" if cur.fetchone() else "CREATE"
+    if cur.fetchone():
+        # Supabase's `postgres` is NOT a real superuser. Postgres only lets a
+        # superuser *mention* SUPERUSER / BYPASSRLS in ALTER ROLE (even when
+        # nothing changes), so on update we touch only what we may change,
+        # then verify the dangerous attributes below.
+        cur.execute(
+            sql.SQL("ALTER ROLE {} WITH LOGIN NOCREATEDB NOCREATEROLE NOINHERIT "
+                    "PASSWORD {}").format(sql.Identifier(role), sql.Literal(password)))
+        action = "updated"
+    else:
+        cur.execute(
+            sql.SQL("CREATE ROLE {} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE "
+                    "NOINHERIT NOBYPASSRLS PASSWORD {}").format(
+                sql.Identifier(role), sql.Literal(password)))
+        action = "created"
+
     cur.execute(
-        sql.SQL("{} ROLE {} WITH LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE "
-                "NOINHERIT NOBYPASSRLS PASSWORD {}").format(
-            sql.SQL(verb), sql.Identifier(role), sql.Literal(password))
-    )
-    print(f"  role {role}: {'updated' if verb == 'ALTER' else 'created'}")
+        """SELECT rolsuper, rolbypassrls, rolreplication, rolcreaterole, rolcreatedb
+           FROM pg_roles WHERE rolname = %s""", (role,))
+    flags = dict(zip(("superuser", "bypassrls", "replication", "createrole", "createdb"),
+                     cur.fetchone()))
+    bad = [k for k, v in flags.items() if v]
+    if bad:
+        sys.exit(f"Role {role} has unsafe attribute(s) {bad}; drop the role and re-run.")
+    print(f"  role {role}: {action} (no superuser/bypassrls/createrole/createdb)")
 
 
 def rls_read_policies(cur) -> None:
